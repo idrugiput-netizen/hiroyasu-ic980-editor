@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hiroyasu IC-980 Pro Max - YSF Editor (extended)</title>
+<style>
+:root {
+  --bg: #12151c; --card: #1c212c; --bd: #2e3646; --fg: #e2e8f0;
+  --ac: #2563eb; --ac-h: #1d4ed8; --sel: #1e293b; --warn: #ef4444; --succ: #22c55e;
+}
+* { box-sizing: border-box; }
+body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 14px/1.4 Arial, sans-serif; }
+h1 { font-size: 20px; margin: 0 0 12px; }
+.card { background: var(--card); border: 1px solid var(--bd); border-radius: 8px; padding: 14px; margin-bottom: 14px; }
+.btn-group { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+button, input[type="file"]::file-selector-button {
+  background: var(--ac); color: #fff; border: 0; border-radius: 6px; padding: 8px 14px;
+  font-size: 13px; font-weight: bold; cursor: pointer; transition: 0.15s;
+}
+button:hover { background: var(--ac-h); }
+button.o { background: transparent; color: #94a3b8; border: 1px solid var(--bd); }
+button.o:hover { background: var(--bd); color: #fff; }
+button.danger { background: var(--warn); }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+.file-input { display: inline-flex; align-items: center; gap: 8px; border: 1px dashed var(--bd); padding: 6px 10px; border-radius: 6px; }
+.file-input input[type="file"] { display: none; }
+.file-name { color: #94a3b8; font-size: 12px; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#wrap { max-height: 60vh; overflow: auto; border: 1px solid var(--bd); border-radius: 6px; margin-top: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 12px; }
+th, td { padding: 6px 8px; text-align: left; border-bottom: 1px solid var(--bd); white-space: nowrap; }
+th { position: sticky; top: 0; background: #252d3d; z-index: 2; }
+tr.r { cursor: pointer; }
+tr.r:hover { background: #232b3b; }
+tr.sel { background: var(--sel) !important; border-left: 3px solid var(--ac); }
+input[type="text"], input[type="number"], select { background: #11141a; border: 1px solid var(--bd); color: var(--fg); padding: 4px 6px; border-radius: 4px; font-size: 12px; }
+.msg { margin-top: 8px; font-size: 13px; font-weight: bold; }
+.err { color: var(--warn); }
+.succ { color: var(--succ); }
+.small { font-size: 11px; color: #94a3b8; }
+</style>
+</head>
+<body>
+
+<h1>Hiroyasu IC-980 Pro Max - YSF Editor (extended)</h1>
+
+<div class="card">
+  <div class="btn-group">
+    <div class="file-input">
+      <button type="button" id="bChooseYsf">Choose .Ysf File</button>
+      <span class="file-name" id="ysfFileName">No file selected</span>
+      <input type="file" id="fYsf" accept=".ysf,.Ysf">
+    </div>
+    <div class="file-input">
+      <button type="button" id="bChooseCsv">Choose CSV File</button>
+      <span class="file-name" id="csvFileName">No file selected</span>
+      <input type="file" id="fCsv" accept=".csv">
+    </div>
+    <button id="bNew" class="o">Create Empty List</button>
+  </div>
+  <div class="msg" id="info">Select a .Ysf or .CSV file to get started.</div>
+</div>
+
+<div class="card">
+  <div class="btn-group">
+    <button id="bInsEmpty" disabled>+ Insert Empty Channel Before</button>
+    <button id="bInsCopy" class="o" disabled>+ Insert Copy Before</button>
+    <button id="bMoveUp" class="o" disabled>↑ Move Selected Up</button>
+    <button id="bMoveDown" class="o" disabled>↓ Move Selected Down</button>
+    <button id="bCopyChannel" class="o" disabled>Copy Selected Channel</button>
+    <button id="bPasteChannel" class="o" disabled>Paste Channel After Selected</button>
+    <button id="bDel" class="danger" disabled>Delete Selected</button>
+    <div style="flex: 1;"></div>
+    <button id="bSaveYsf" style="background: var(--succ);" disabled>Save as .Ysf (CPS Ready)</button>
+  </div>
+
+  <div id="wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Name</th>
+          <th>RX (MHz)</th>
+          <th>TX (MHz)</th>
+          <th>Mode</th>
+          <th>TX Tone</th>
+          <th>RX Tone</th>
+          <th>PTT Pop</th>
+          <th>PTT Push</th>
+          <th>Rx Signal</th>
+          <th>Scramble</th>
+          <th>Compandor</th>
+          <th>Bandwidth</th>
+          <th>TX Power</th>
+          <th>Scan</th>
+          <th>Busy Inhibit</th>
+          <th>Special DCS</th>
+          <th>Vague Sub</th>
+          <th>QT Dec</th>
+          <th>QT Enc</th>
+        </tr>
+      </thead>
+      <tbody id="tb"></tbody>
+    </table>
+  </div>
+  <div class="msg" id="msg"></div>
+</div>
+
+<script>
+// Based on index.html structure — extended with additional YSF fields.
+const HEADER_SIZE = 564; const REC_SIZE = 85;
+const F_RX = 0, F_TX = 14, F_RXT = 28, F_RXT_TYPE = 30, F_TXT = 41, F_TXT_TYPE = 43;
+const F_MODE = 58, F_MODE2 = 60, F_NAME = 63, NAME_LEN = 16;
+const MAX_CH = 500; const TAIL_OFFSET = HEADER_SIZE + MAX_CH * REC_SIZE; const TAIL_SIZE = 3982;
+const FLAG_AM = 0x04; const TOTAL_FILE_SIZE = 47046;
+
+// Additional field offsets within a record (best-effort mapping from sample files)
+const OFF_PTT_POP = 17, OFF_PTT_PUSH = 18, OFF_RX_SIGNAL = 19, OFF_SCRAMBLE = 20, OFF_COMP = 21;
+const OFF_VAGUE = 22, OFF_SPECIAL_DCS = 23, OFF_BUSY = 24, OFF_SCAN = 25, OFF_BW = 26, OFF_TXP = 27;
+const OFF_QT_DEC = 31, OFF_QT_ENC = 32; // enc/dec placed at 31/32 as reasonable candidates
+
+let rawHeader = new Uint8Array(HEADER_SIZE);
+let rawTail = new Uint8Array(TAIL_SIZE);
+let channels = []; let selectedIndex = -1; let channelClipboard = null;
+
+const PTT_LIST = ['OFF','My Name','Code form-1','Code form-2','Code form-3','Code form-4','Code form-5','Code form-6'];
+const RXSIG_LIST = ['OFF','DTMF','FSK','FSK+DTMF'];
+const SCRAMBLE_LIST = ['OFF','SCR1','SCR2','SCR3','SCR4','SCR5','SCR6','SCR7'];
+const BW_LIST = ['Narrow','Wide'];
+const TXP_LIST = ['Low','High'];
+
+const CTCSS_LIST = [67.0,69.3,71.9,74.4,77.0,79.7,82.5,85.4,88.5,91.5,94.8,97.4,100.0,103.5,107.2,110.9,114.8,118.8,123.0,127.3,131.8,136.5,141.3,146.2,151.4,156.7,162.2,167.9,173.8,179.9,186.2,192.8,203.5,206.5,210.7,218.1,225.7,229.1,233.6,241.8,250.3,254.1];
+
+function u32le(rec, off) { return (rec[off] | rec[off+1]<<8 | rec[off+2]<<16 | rec[off+3]*16777216) >>> 0; }
+function setMsg(txt, cls) { const m = document.getElementById('msg'); m.className = 'msg ' + (cls || ''); m.textContent = txt; }
+function esc(s){ return String(s).replace(/"/g,'&quot;'); }
+
+// load default header/tail from index.html logic (kept simple)
+function initDefaultHeaderAndTail(){ rawHeader = new Uint8Array(HEADER_SIZE); rawTail = new Uint8Array(TAIL_SIZE); }
+
+function initEmpty(){ initDefaultHeaderAndTail(); channels = []; for(let i=0;i<16;i++){ channels.push({ name:'Channel '+(i+1), rx:145.60000, tx:145.00000, am:false, txTone:123.0, rxTone:0, pttPop:0, pttPush:0, rxSignal:0, scramble:0, comp:0, bw:0, txp:0, scan:0, busy:0, specialDcs:0, vague:0, qtDec:0, qtEnc:0, raw:null, orig:null }); } selectedIndex=0; render(); setMsg('Empty workspace created','succ'); }
+
+// File input handlers
+document.getElementById('bChooseYsf').onclick = () => document.getElementById('fYsf').click();
+document.getElementById('bChooseCsv').onclick = () => document.getElementById('fCsv').click();
+
+document.getElementById('fYsf').onchange = async (e) => {
+  document.getElementById('ysfFileName').textContent = e.target.files[0]?.name || 'No file selected';
+  const file = e.target.files[0]; if(!file) return;
+  const buf = new Uint8Array(await file.arrayBuffer());
+  if(buf.length < TOTAL_FILE_SIZE) setMsg('Warning: file smaller than standard and will be padded when saved','err');
+  rawHeader = buf.slice(0, HEADER_SIZE);
+  if(buf.length >= TOTAL_FILE_SIZE) rawTail = buf.slice(TAIL_OFFSET, TAIL_OFFSET + TAIL_SIZE); else rawTail = new Uint8Array(TAIL_SIZE);
+
+  channels = [];
+  const totalSlotsInFile = Math.min(MAX_CH, Math.max(0, Math.floor((Math.min(buf.length, TAIL_OFFSET) - HEADER_SIZE) / REC_SIZE)));
+  for(let k=0;k<totalSlotsInFile;k++){
+    const off = HEADER_SIZE + k*REC_SIZE; const rec = buf.slice(off, off+REC_SIZE);
+    const rxHz = u32le(rec, F_RX); if(rxHz===0) continue;
+    let name = '';
+    for(let i=F_NAME;i<F_NAME+NAME_LEN;i++){ if(rec[i]===0) break; name += String.fromCharCode(rec[i]); }
+    const rxTVal = rec[F_RXT] | rec[F_RXT+1]<<8; const rxTone = (rxTVal===0xFFFF||rxTVal===0)?0:rxTVal/10;
+    const txTVal = rec[F_TXT] | rec[F_TXT+1]<<8; const txTone = (txTVal===0xFFFF||txTVal===0)?0:txTVal/10;
+
+    // read additional fields (best-effort)
+    const pttPop = rec[OFF_PTT_POP] || 0;
+    const pttPush = rec[OFF_PTT_PUSH] || 0;
+    const rxSignal = rec[OFF_RX_SIGNAL] || 0;
+    const scramble = rec[OFF_SCRAMBLE] || 0;
+    const comp = rec[OFF_COMP] || 0;
+    const vague = rec[OFF_VAGUE] || 0;
+    const specialDcs = rec[OFF_SPECIAL_DCS] || 0;
+    const busy = rec[OFF_BUSY] || 0;
+    const scan = rec[OFF_SCAN] || 0;
+    const bw = rec[OFF_BW] || 0;
+    const txp = rec[OFF_TXP] || 0;
+    const qtDec = rec[OFF_QT_DEC] || 0;
+    const qtEnc = rec[OFF_QT_ENC] || 0;
+
+    channels.push({
+      name: name.trim(), rx: rxHz/1e6, tx: u32le(rec, F_TX)/1e6 || rxHz/1e6, am: rec[F_MODE]===0x90,
+      txTone: txTone, rxTone: rxTone,
+      pttPop, pttPush, rxSignal, scramble, comp, bw, txp, scan, busy, specialDcs, vague, qtDec, qtEnc,
+      raw: Array.from(rec), orig: { am: rec[F_MODE]===0x90, txTone, rxTone }
+    });
+  }
+  selectedIndex = channels.length?0:-1; render(); setMsg('Loaded '+channels.length+' channels','succ'); e.target.value='';
+};
+
+// CSV import (same as index.html)
+document.getElementById('fCsv').onchange = (e) => {
+  document.getElementById('csvFileName').textContent = e.target.files[0]?.name || 'No file selected';
+  const file = e.target.files[0]; if(!file) return; const reader = new FileReader();
+  reader.onload = (evt)=>{
+    const lines = String(evt.target.result).split(/\r?\n/).filter(l=>l.trim().length);
+    if(lines.length<2){ setMsg('The CSV file contains no data.','err'); return; }
+    const head = parseCSVLine(lines[0]).map(s=>s.replace(/^"|"$/g,'')); const col=(name)=>head.indexOf(name);
+    const iName=col('Name'), iFreq=col('Frequency'), iDup=col('Duplex'), iOff=col('Offset'), iTone=col('Tone'), iRT=col('rToneFreq'), iCT=col('cToneFreq'), iCross=col('CrossMode'), iMode=col('Mode');
+    initDefaultHeaderAndTail(); let imported=[], skipped=0;
+    for(let i=1;i<lines.length;i++){ const row = parseCSVLine(lines[i]); const g=(idx)=> idx>=0 && idx<row.length ? row[idx].replace(/^"|"$/g,'').trim():''; const rxFreq = parseFloat(g(iFreq)); if(!rxFreq || !(rxFreq>0)){ skipped++; continue; }
+      const name = (g(iName) || ('CH-'+i)).substring(0,16); const duplex = g(iDup); const offset = parseFloat(g(iOff))||0; let txFreq = rxFreq;
+      if(duplex==='-') txFreq = rxFreq - offset; else if(duplex==='+') txFreq = rxFreq + offset; else if(duplex.toLowerCase()==='split') txFreq = offset; if(!(txFreq>0)) txFreq=rxFreq;
+      const toneMode = g(iTone); const rTone = parseFloat(g(iRT))||0; const cTone = parseFloat(g(iCT))||0; const cross = g(iCross)||'Tone->Tone'; let txTone=0, rxTone=0;
+      if(toneMode==='Tone') txTone = rTone; else if(toneMode==='TSQL') txTone = rxTone = cTone||rTone; else if(toneMode==='Cross'){ const [txSide, rxSide] = cross.split('->'); if(txSide==='Tone') txTone = rTone; if(rxSide==='Tone') rxTone = cTone||rTone; }
+      const mode = g(iMode).toUpperCase(); const am = (mode==='NAM' || mode==='AM'); imported.push({ name, rx:rxFreq, tx:txFreq, am, txTone, rxTone }); if(imported.length>=MAX_CH) break;
+    }
+    if(imported.length){ channels = imported.map(ch=>({...ch, pttPop:0, pttPush:0, rxSignal:0, scramble:0, comp:0, bw:0, txp:0, scan:0, busy:0, specialDcs:0, vague:0, qtDec:0, qtEnc:0, raw:null, orig:null })); selectedIndex=0; render(); setMsg('Imported '+imported.length+' channels from CSV','succ'); } else setMsg('No valid channels in CSV','err');
+  };
+  reader.readAsText(file); e.target.value='';
+};
+
+function parseCSVLine(line){ const out=[]; let cur='', inQ=false; for(let i=0;i<line.length;i++){ const c=line[i]; if(inQ){ if(c==='"'){ if(line[i+1]==='"'){ cur+='"'; i++; } else inQ=false; } else cur+=c; } else if(c===','){ out.push(cur); cur=''; } else if(c==='"') inQ=true; else cur+=c; } out.push(cur); return out.map(s=>s.trim()); }
+
+function render(){ const tb=document.getElementById('tb'); tb.innerHTML=''; channels.forEach((ch, idx)=>{ const tr=document.createElement('tr'); tr.className = 'r'+(idx===selectedIndex?' sel':''); tr.onclick = (e)=>{ if(e.target.tagName==='INPUT' || e.target.tagName==='SELECT') return; selectedIndex = idx; render(); };
+    tr.innerHTML = `
+      <td>${idx+1}</td>
+      <td><input type="text" maxlength="16" value="${esc(ch.name)}" onchange="channels[${idx}].name=this.value"></td>
+      <td><input type="number" step="0.00001" value="${ch.rx.toFixed(5)}" onchange="channels[${idx}].rx=parseFloat(this.value)||0"></td>
+      <td><input type="number" step="0.00001" value="${ch.tx.toFixed(5)}" onchange="channels[${idx}].tx=parseFloat(this.value)||0"></td>
+      <td><select onchange="channels[${idx}].am=this.value==='1'">
+        <option value="0" ${ch.am? '':'selected'}>FM</option>
+        <option value="1" ${ch.am? 'selected':''}>AM</option>
+      </select></td>
+      <td>${genToneSelect(idx,'txTone',ch.txTone)}</td>
+      <td>${genToneSelect(idx,'rxTone',ch.rxTone)}</td>
+      <td>${genEnumSelect(idx,'pttPop',PTT_LIST,ch.pttPop)}</td>
+      <td>${genEnumSelect(idx,'pttPush',PTT_LIST,ch.pttPush)}</td>
+      <td>${genEnumSelect(idx,'rxSignal',RXSIG_LIST,ch.rxSignal)}</td>
+      <td>${genEnumSelect(idx,'scramble',SCRAMBLE_LIST,ch.scramble)}</td>
+      <td>${genToggleSelect(idx,'comp',ch.comp)}</td>
+      <td>${genEnumSelect(idx,'bw',BW_LIST,ch.bw)}</td>
+      <td>${genEnumSelect(idx,'txp',TXP_LIST,ch.txp)}</td>
+      <td>${genToggleSelect(idx,'scan',ch.scan)}</td>
+      <td>${genToggleSelect(idx,'busy',ch.busy)}</td>
+      <td>${genToggleSelect(idx,'specialDcs',ch.specialDcs)}</td>
+      <td>${genToggleSelect(idx,'vague',ch.vague)}</td>
+      <td><input type="number" step="1" value="${ch.qtDec||0}" onchange="channels[${idx}].qtDec=parseInt(this.value)||0" style="width:70px"></td>
+      <td><input type="number" step="1" value="${ch.qtEnc||0}" onchange="channels[${idx}].qtEnc=parseInt(this.value)||0" style="width:70px"></td>
+    `;
+    tb.appendChild(tr);
+  });
+  document.getElementById('info').textContent = 'Total channels in list: '+channels.length+' / '+MAX_CH;
+  const hasSel = selectedIndex>=0 && selectedIndex<channels.length;
+  document.getElementById('bInsEmpty').disabled = !hasSel || channels.length>=MAX_CH;
+  document.getElementById('bInsCopy').disabled = !hasSel || channels.length>=MAX_CH;
+  document.getElementById('bDel').disabled = !hasSel;
+  document.getElementById('bMoveUp').disabled = !hasSel || selectedIndex<=0;
+  document.getElementById('bMoveDown').disabled = !hasSel || selectedIndex>=channels.length-1;
+  document.getElementById('bCopyChannel').disabled = !hasSel;
+  document.getElementById('bPasteChannel').disabled = !hasSel || !channelClipboard || channels.length>=MAX_CH;
+  document.getElementById('bSaveYsf').disabled = channels.length===0;
+}
+
+function genToneSelect(chIdx, prop, currentVal){ let html = `<select onchange="channels[${chIdx}].${prop}=parseFloat(this.value)">`;
+  html += `<option value="0" ${currentVal===0?'selected':''}>OFF</option>`;
+  CTCSS_LIST.forEach(t=>{ const sel = Math.abs(t-currentVal)<0.1?'selected':''; html += `<option value="${t}" ${sel}>${t.toFixed(1)} Hz</option>`; }); html += `</select>`; return html; }
+
+function genEnumSelect(chIdx, prop, list, cur){ let html = `<select onchange="channels[${chIdx}].${prop}=parseInt(this.value)">`;
+  list.forEach((v,i)=> html += `<option value="${i}" ${i===cur?'selected':''}>${v}</option>`);
+  html += `</select>`; return html; }
+
+function genToggleSelect(chIdx, prop, cur){ return `<select onchange="channels[${chIdx}].${prop}=parseInt(this.value)"><option value="0" ${cur? '':'selected'}>OFF</option><option value="1" ${cur? 'selected':''}>ON</option></select>`; }
+
+// Actions
+document.getElementById('bInsEmpty').onclick = () => { if(selectedIndex<0||channels.length>=MAX_CH)return; channels.splice(selectedIndex,0,{ name:'New Channel', rx:145.600, tx:145.000, am:false, txTone:123.0, rxTone:0, pttPop:0, pttPush:0, rxSignal:0, scramble:0, comp:0, bw:0, txp:0, scan:0, busy:0, specialDcs:0, vague:0, qtDec:0, qtEnc:0, raw:null, orig:null}); render(); setMsg('Inserted empty channel','succ'); };
+
+document.getElementById('bInsCopy').onclick = () => { if(selectedIndex<0||channels.length>=MAX_CH)return; channels.splice(selectedIndex,0, JSON.parse(JSON.stringify(channels[selectedIndex])) ); render(); setMsg('Inserted copy','succ'); };
+
+document.getElementById('bMoveUp').onclick = () =>{ if(selectedIndex<=0||selectedIndex>=channels.length)return; [channels[selectedIndex-1], channels[selectedIndex]]=[channels[selectedIndex], channels[selectedIndex-1]]; selectedIndex--; render(); setMsg('Moved up','succ'); };
+
+document.getElementById('bCopyChannel').onclick = () =>{ if(selectedIndex<0||selectedIndex>=channels.length) return; channelClipboard = JSON.parse(JSON.stringify(channels[selectedIndex])); render(); setMsg('Copied channel to clipboard','succ'); };
+
+document.getElementById('bPasteChannel').onclick = ()=>{ if(!channelClipboard||selectedIndex<0||channels.length>=MAX_CH) return; channels.splice(selectedIndex+1,0, JSON.parse(JSON.stringify(channelClipboard)) ); selectedIndex++; render(); setMsg('Pasted channel after selected','succ'); };
+
+document.getElementById('bMoveDown').onclick = ()=>{ if(selectedIndex<0||selectedIndex>=channels.length-1) return; [channels[selectedIndex], channels[selectedIndex+1]]=[channels[selectedIndex+1], channels[selectedIndex]]; selectedIndex++; render(); setMsg('Moved down','succ'); };
+
+document.getElementById('bDel').onclick = ()=>{ if(selectedIndex<0) return; channels.splice(selectedIndex,1); if(selectedIndex>=channels.length) selectedIndex=channels.length-1; render(); setMsg('Deleted channel','succ'); };
+
+document.getElementById('bNew').onclick = initEmpty;
+
+// Save as YSF (write back fields using offsets)
+document.getElementById('bSaveYsf').onclick = ()=>{
+  const buf = new Uint8Array(TOTAL_FILE_SIZE);
+  buf.set(rawHeader.subarray(0, HEADER_SIZE), 0);
+
+  const putU32 = (o,v)=>{ buf[o]=v&0xFF; buf[o+1]=(v>>8)&0xFF; buf[o+2]=(v>>16)&0xFF; buf[o+3]=(v>>>24)&0xFF; };
+  const putTone = (o, typeOff, tone)=>{ if(tone>0){ const t = Math.round(tone*10); buf[o]=t&0xFF; buf[o+1]=(t>>8)&0xFF; buf[typeOff]=0x01; } else { buf[o]=0xFF; buf[o+1]=0xFF; buf[typeOff]=0x00; } };
+
+  // channel bitmask area (copy original header area if present)
+  for(let i=351;i<=413;i++) buf[i]=0x00;
+  for(let k=0;k<channels.length && k<MAX_CH;k++){ const chNum=k+1; buf[351 + Math.floor(chNum/8)] |= (1 << (chNum % 8)); }
+
+  for(let k=0;k<channels.length && k<MAX_CH;k++){
+    const off = HEADER_SIZE + k*REC_SIZE; const ch = channels[k];
+    const o = ch.orig;
+    if(ch.raw) buf.set(ch.raw, off);
+
+    putU32(off + F_RX, Math.round(ch.rx * 1e6) >>> 0);
+    putU32(off + F_TX, Math.round(ch.tx * 1e6) >>> 0);
+    const rxSame = o && o.rxTone===ch.rxTone, txSame = o && o.txTone===ch.txTone;
+    if(!rxSame) putTone(off + F_RXT, off + F_RXT_TYPE, ch.rxTone);
+    if(!txSame) putTone(off + F_TXT, off + F_TXT_TYPE, ch.txTone);
+
+    buf[off + F_MODE] = ch.am ? 0x90 : 0xB0;
+    if(!(rxSame && txSame && o && o.am === ch.am)){
+      buf[off + F_MODE2] = (ch.am ? FLAG_AM : 0) | (buf[off + F_RXT_TYPE] << 4) | (buf[off + F_TXT_TYPE] << 6);
+    }
+
+    // write name
+    for(let i=0;i<NAME_LEN;i++) buf[off + F_NAME + i] = i < ch.name.length ? (ch.name.charCodeAt(i) & 0xFF) : 0;
+
+    // write extended fields (best-effort mapping)
+    buf[off + OFF_PTT_POP] = ch.pttPop & 0xFF;
+    buf[off + OFF_PTT_PUSH] = ch.pttPush & 0xFF;
+    buf[off + OFF_RX_SIGNAL] = ch.rxSignal & 0xFF;
+    buf[off + OFF_SCRAMBLE] = ch.scramble & 0xFF;
+    buf[off + OFF_COMP] = ch.comp & 0xFF;
+    buf[off + OFF_VAGUE] = ch.vague & 0xFF;
+    buf[off + OFF_SPECIAL_DCS] = ch.specialDcs & 0xFF;
+    buf[off + OFF_BUSY] = ch.busy & 0xFF;
+    buf[off + OFF_SCAN] = ch.scan & 0xFF;
+    buf[off + OFF_BW] = ch.bw & 0xFF;
+    buf[off + OFF_TXP] = ch.txp & 0xFF;
+    buf[off + OFF_QT_DEC] = ch.qtDec & 0xFF;
+    buf[off + OFF_QT_ENC] = ch.qtEnc & 0xFF;
+  }
+
+  buf.set(rawTail.subarray(0, TAIL_SIZE), TAIL_OFFSET);
+  const blob = new Blob([buf], { type: 'application/octet-stream' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'editor_export.Ysf'; document.body.appendChild(a); a.click(); a.remove(); setMsg('File saved: editor_export.Ysf','succ');
+};
+
+initEmpty();
+</script>
+</body>
+</html>
